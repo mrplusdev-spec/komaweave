@@ -1,0 +1,380 @@
+<!--
+Koma*Weave v0.2c 変更点：
+- フレームプレビュー領域の背景色をダークグレーに変更し、黒線の視認性を改善
+- bindTap とフラグ制御を廃止し、各ボタンを click / touchstart の両イベントで直接処理
+- 「＜メニューに戻る」ボタンのヘッダーに position / z-index を付与してタップ領域を確保
+- タイトルおよびダウンロードファイル名を v0.2c 表記に更新
+-->
+<!--
+Koma*Weave v0.2b 変更点：
+- スマホ向けに menuScreen / frameScreen の2画面レイアウトへ再構成
+- 全ボタンを addEventListener による click / touchstart 両対応に統一
+- フレーム画面に「＜メニューに戻る」ボタンと下部PNGダウンロードボタンを配置
+- キャンバスを画面幅フィット表示しつつヘッダー／フッターと重ならないよう調整
+- body全体のスクロールを禁止して全画面表示に最適化
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Koma*Weave v0.2c｜メニュー＋フレーム表示</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000000;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+    }
+    #app {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: #111111;
+      color: #f5f5f5;
+    }
+
+    .screen {
+      width: 100%;
+      height: 100%;
+      display: none;
+    }
+    .screen.active {
+      display: flex;
+    }
+
+    /* メニュー画面 */
+    #menuScreen {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    #menuInner {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    #menuTitle {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    .menu-button {
+      width: 100%;
+      padding: 18px 16px;
+      border-radius: 999px;
+      border: 1px solid #666666;
+      background: #222222;
+      color: #f5f5f5;
+      font-size: 18px;
+      letter-spacing: 0.08em;
+      text-align: center;
+      cursor: pointer;
+    }
+    .menu-button:active {
+      background: #333333;
+    }
+
+    /* フレーム表示画面 */
+    #frameScreen {
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      padding: 0;
+    }
+    #frameHeader {
+      height: 44px;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      flex-shrink: 0;
+      background: #111111;
+      position: relative;
+      z-index: 2;
+    }
+    #backToMenuBtn {
+      padding: 6px 10px;
+      font-size: 13px;
+      border-radius: 999px;
+      border: 1px solid #666666;
+      background: #222222;
+      color: #f5f5f5;
+      cursor: pointer;
+    }
+    #frameMain {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 8px;
+      background: #222222;
+      position: relative;
+    }
+    #canvasWrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      border: 1px solid #444444;
+      max-width: 100%;
+      max-height: 100%;
+      width: 100%;
+      height: auto;
+    }
+    #frameFooter {
+      height: 44px;
+      padding: 4px 0 8px 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      flex-shrink: 0;
+      background: #111111;
+    }
+    #downloadBtn {
+      padding: 6px 14px;
+      font-size: 12px;
+      border-radius: 999px;
+      border: 1px solid #666666;
+      background: #f5f5f5;
+      color: #111111;
+      cursor: pointer;
+      outline: none;
+    }
+    #downloadBtn:active {
+      background: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- メニュー画面 -->
+    <div id="menuScreen" class="screen active">
+      <div id="menuInner">
+        <div id="menuTitle">Koma*Weave v0.2c</div>
+        <button id="btnFrameSelect" class="menu-button">フレーム選択</button>
+        <button id="btnFrameCapture" class="menu-button">フレーム撮影</button>
+      </div>
+    </div>
+
+    <!-- フレーム表示画面 -->
+    <div id="frameScreen" class="screen">
+      <div id="frameHeader">
+        <button id="backToMenuBtn">&lt; メニューに戻る</button>
+      </div>
+      <div id="frameMain">
+        <div id="canvasWrapper">
+          <canvas id="frameCanvas" width="1080" height="1920"></canvas>
+        </div>
+      </div>
+      <div id="frameFooter">
+        <button id="downloadBtn">PNGをダウンロード</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // :contentReference[oaicite:0]{index=0}
+
+    const menuScreen = document.getElementById("menuScreen");
+    const frameScreen = document.getElementById("frameScreen");
+    const btnFrameSelect = document.getElementById("btnFrameSelect");
+    const btnFrameCapture = document.getElementById("btnFrameCapture");
+    const backToMenuBtn = document.getElementById("backToMenuBtn");
+    const downloadBtn = document.getElementById("downloadBtn");
+
+    function showScreen(name) {
+      if (name === "menu") {
+        menuScreen.classList.add("active");
+        frameScreen.classList.remove("active");
+      } else if (name === "frame") {
+        frameScreen.classList.add("active");
+        menuScreen.classList.remove("active");
+      }
+    }
+
+    function addClickAndTouch(el, handler) {
+      if (!el) return;
+      el.addEventListener("touchstart", handler, { passive: true });
+      el.addEventListener("click", handler);
+    }
+
+    addClickAndTouch(btnFrameSelect, () => {
+      showScreen("frame");
+    });
+
+    // v0.2c 仮実装：フレーム撮影ボタンはアラートのみ表示
+    addClickAndTouch(btnFrameCapture, () => {
+      alert("カメラ撮影モードは準備中です");
+    });
+
+    addClickAndTouch(backToMenuBtn, () => {
+      showScreen("menu");
+    });
+
+    const canvas = document.getElementById("frameCanvas");
+    const ctx = canvas.getContext("2d", { alpha: true });
+
+    // 外枠（シースルー・フレーム）
+    function drawRoundedRect(x, y, w, h, r, lineWidth) {
+      const radius = Math.min(r, w / 2, h / 2);
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = "#000000";
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + w - radius, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+      ctx.lineTo(x + w, y + h - radius);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+      ctx.lineTo(x + radius, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.stroke();
+    }
+
+    function drawOuterFrame() {
+      const margin = 20;
+      const lineWidth = 6;
+      const x = margin + lineWidth / 2;
+      const y = margin + lineWidth / 2;
+      const w = canvas.width - 2 * margin - lineWidth;
+      const h = canvas.height - 2 * margin - lineWidth;
+      const cornerRadius = 2;
+
+      drawRoundedRect(x, y, w, h, cornerRadius, lineWidth);
+    }
+
+    // 吹き出し（丸型／白塗り＋黒線）
+    function drawSpeechBubble(centerX, centerY, width, height) {
+      const radius = 40;           // 角の丸み
+      const lineWidth = 4;
+      const tailWidth = 70;        // しっぽの横方向サイズ
+      const tailHeight = 90;       // しっぽの縦方向サイズ
+      const tailOffsetX = width * 0.25; // しっぽの開始位置（左寄り）
+
+      const x = centerX - width / 2;
+      const y = centerY - height / 2;
+
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = "#000000";
+      ctx.fillStyle = "#FFFFFF";
+
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+
+      const bottomY = y + height;
+      const tailStartX = x + tailOffsetX;
+      const tailEndX = tailStartX + tailWidth;
+
+      ctx.lineTo(tailEndX, bottomY);
+
+      const tailTipX = tailStartX + tailWidth * 0.2;
+      const tailTipY = bottomY + tailHeight;
+      const control1X = tailEndX + tailWidth * 0.2;
+      const control1Y = bottomY + tailHeight * 0.3;
+      const control2X = tailStartX - tailWidth * 0.2;
+      const control2Y = bottomY + tailHeight * 0.7;
+
+      ctx.quadraticCurveTo(control1X, control1Y, tailTipX, tailTipY);
+      ctx.quadraticCurveTo(control2X, control2Y, tailStartX, bottomY);
+
+      ctx.lineTo(x + radius, bottomY);
+      ctx.quadraticCurveTo(x, bottomY, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    function placeSpeechBubble() {
+      const margin = 20;
+      const width = 400;
+      const height = 300;
+
+      const centerX = canvas.width - margin - width / 2 - 40;
+      const centerY = margin + height / 2 + 40;
+
+      drawSpeechBubble(centerX, centerY, width, height);
+    }
+
+    // 効果線（左側から中央へ向けた放射線）
+    function drawEffectLines() {
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 1.5;
+
+      const lines = 10;
+      const margin = 20;
+      const frameLineWidth = 6;
+
+      const startX = margin + frameLineWidth + 6;
+      const startBandTop = canvas.height * 0.25;
+      const startBandBottom = canvas.height * 0.75;
+
+      const centerX = canvas.width * 0.55;
+      const centerY = canvas.height * 0.5;
+      const maxLength = canvas.width * 0.38;
+
+      for (let i = 0; i < lines; i++) {
+        const t = lines === 1 ? 0.5 : i / (lines - 1);
+        const startY = startBandTop + (startBandBottom - startBandTop) * t;
+
+        const baseAngle = Math.atan2(centerY - startY, centerX - startX);
+        const angleJitter = (t - 0.5) * 0.35;
+        const angle = baseAngle + angleJitter;
+
+        const endX = startX + Math.cos(angle) * maxLength;
+        const endY = startY + Math.sin(angle) * maxLength;
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+      }
+    }
+
+    function renderFrame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawEffectLines();    // [次層] 効果線
+      placeSpeechBubble();  // [次層] 吹き出し
+      drawOuterFrame();     // [最上層] コマ枠
+    }
+
+    renderFrame();
+
+    addClickAndTouch(downloadBtn, () => {
+      const link = document.createElement("a");
+      link.download = "komaweave_v0_2c_sheerscreen_1080x1920.png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    });
+  </script>
+</body>
+</html>
