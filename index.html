@@ -1,4 +1,12 @@
 <!--
+Koma*Weave v0.2d 変更点：
+- スマホ画面内にフレーム全体が収まるよう、ウィンドウサイズからキャンバス表示サイズを動的スケーリング
+- 「フレーム選択」（プレビュー）と「フレーム撮影」（カメラ＋シャッター）の2モードを実装
+- 撮影したコマ画像をメモリ配列に保存し、新設の「コマ倉庫」画面でグリッド一覧表示
+- メニューに「コマ倉庫」ボタンを追加し、3画面（メニュー／フレーム／倉庫）構成に拡張
+- カメラプレビュー（video）＋フレームキャンバスを重ねるレイアウトに調整
+-->
+<!--
 Koma*Weave v0.2c 変更点：
 - フレームプレビュー領域の背景色をダークグレーに変更し、黒線の視認性を改善
 - bindTap とフラグ制御を廃止し、各ボタンを click / touchstart の両イベントで直接処理
@@ -17,7 +25,7 @@ Koma*Weave v0.2b 変更点：
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>Koma*Weave v0.2c｜メニュー＋フレーム表示</title>
+  <title>Koma*Weave v0.2d｜メニュー＋フレーム＋コマ倉庫</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <style>
     * {
@@ -129,19 +137,58 @@ Koma*Weave v0.2b 変更点：
       background: #222222;
       position: relative;
     }
+    #frameViewport {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000000;
+      overflow: hidden;
+    }
+    #cameraVideo {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none; /* 撮影モードのみ表示 */
+    }
     #canvasWrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
+      pointer-events: none;
     }
     canvas {
       border: 1px solid #444444;
-      max-width: 100%;
-      max-height: 100%;
       width: 100%;
-      height: auto;
+      height: 100%;
+    }
+    #shutterBtn {
+      position: absolute;
+      bottom: 6%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 3px solid #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+      display: none; /* 撮影モードのみ表示 */
+    }
+    #shutterBtn::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      background: #ffffff;
     }
     #frameFooter {
       height: 44px;
@@ -165,6 +212,52 @@ Koma*Weave v0.2b 変更点：
     #downloadBtn:active {
       background: #e0e0e0;
     }
+
+    /* コマ倉庫画面 */
+    #warehouseScreen {
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      padding: 0;
+    }
+    #warehouseHeader {
+      height: 44px;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      flex-shrink: 0;
+      background: #111111;
+    }
+    #backToMenuFromWarehouseBtn {
+      padding: 6px 10px;
+      font-size: 13px;
+      border-radius: 999px;
+      border: 1px solid #666666;
+      background: #222222;
+      color: #f5f5f5;
+      cursor: pointer;
+    }
+    #warehouseMain {
+      flex: 1;
+      padding: 8px 8px 12px 8px;
+      background: #000000;
+      overflow-y: auto;
+    }
+    #warehouseGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 8px;
+    }
+    #warehouseGrid img {
+      width: 100%;
+      height: auto;
+      display: block;
+      border-radius: 6px;
+      border: 1px solid #444444;
+      background: #111111;
+      object-fit: cover;
+    }
   </style>
 </head>
 <body>
@@ -172,9 +265,10 @@ Koma*Weave v0.2b 変更点：
     <!-- メニュー画面 -->
     <div id="menuScreen" class="screen active">
       <div id="menuInner">
-        <div id="menuTitle">Koma*Weave v0.2c</div>
+        <div id="menuTitle">Koma*Weave v0.2d</div>
         <button id="btnFrameSelect" class="menu-button">フレーム選択</button>
         <button id="btnFrameCapture" class="menu-button">フレーム撮影</button>
+        <button id="btnWarehouse" class="menu-button">コマ倉庫</button>
       </div>
     </div>
 
@@ -184,12 +278,26 @@ Koma*Weave v0.2b 変更点：
         <button id="backToMenuBtn">&lt; メニューに戻る</button>
       </div>
       <div id="frameMain">
-        <div id="canvasWrapper">
-          <canvas id="frameCanvas" width="1080" height="1920"></canvas>
+        <div id="frameViewport">
+          <video id="cameraVideo" playsinline autoplay></video>
+          <div id="canvasWrapper">
+            <canvas id="frameCanvas" width="1080" height="1920"></canvas>
+          </div>
+          <button id="shutterBtn"></button>
         </div>
       </div>
       <div id="frameFooter">
         <button id="downloadBtn">PNGをダウンロード</button>
+      </div>
+    </div>
+
+    <!-- コマ倉庫画面 -->
+    <div id="warehouseScreen" class="screen">
+      <div id="warehouseHeader">
+        <button id="backToMenuFromWarehouseBtn">&lt; メニューに戻る</button>
+      </div>
+      <div id="warehouseMain">
+        <div id="warehouseGrid"></div>
       </div>
     </div>
   </div>
@@ -197,20 +305,45 @@ Koma*Weave v0.2b 変更点：
   <script>
     // :contentReference[oaicite:0]{index=0}
 
+    const BASE_WIDTH = 1080;
+    const BASE_HEIGHT = 1920;
+
     const menuScreen = document.getElementById("menuScreen");
     const frameScreen = document.getElementById("frameScreen");
+    const warehouseScreen = document.getElementById("warehouseScreen");
+
     const btnFrameSelect = document.getElementById("btnFrameSelect");
     const btnFrameCapture = document.getElementById("btnFrameCapture");
+    const btnWarehouse = document.getElementById("btnWarehouse");
     const backToMenuBtn = document.getElementById("backToMenuBtn");
+    const backToMenuFromWarehouseBtn = document.getElementById("backToMenuFromWarehouseBtn");
     const downloadBtn = document.getElementById("downloadBtn");
+    const shutterBtn = document.getElementById("shutterBtn");
+
+    const frameHeader = document.getElementById("frameHeader");
+    const frameFooter = document.getElementById("frameFooter");
+    const frameViewport = document.getElementById("frameViewport");
+    const cameraVideo = document.getElementById("cameraVideo");
+
+    const warehouseGrid = document.getElementById("warehouseGrid");
+
+    const canvas = document.getElementById("frameCanvas");
+    const ctx = canvas.getContext("2d", { alpha: true });
+
+    let currentMode = "preview"; // "preview" | "camera"
+    let cameraStream = null;
+    const komaStore = [];
 
     function showScreen(name) {
+      const screens = document.querySelectorAll(".screen");
+      screens.forEach(scr => scr.classList.remove("active"));
+
       if (name === "menu") {
         menuScreen.classList.add("active");
-        frameScreen.classList.remove("active");
       } else if (name === "frame") {
         frameScreen.classList.add("active");
-        menuScreen.classList.remove("active");
+      } else if (name === "warehouse") {
+        warehouseScreen.classList.add("active");
       }
     }
 
@@ -220,21 +353,27 @@ Koma*Weave v0.2b 変更点：
       el.addEventListener("click", handler);
     }
 
-    addClickAndTouch(btnFrameSelect, () => {
-      showScreen("frame");
-    });
+    function resizeFrame() {
+      if (!frameViewport) return;
+      const headerHeight = frameHeader ? frameHeader.getBoundingClientRect().height : 0;
+      const footerHeight = frameFooter ? frameFooter.getBoundingClientRect().height : 0;
+      const verticalMargin = 20;
+      const horizontalMargin = 16;
 
-    // v0.2c 仮実装：フレーム撮影ボタンはアラートのみ表示
-    addClickAndTouch(btnFrameCapture, () => {
-      alert("カメラ撮影モードは準備中です");
-    });
+      const availWidth = window.innerWidth - horizontalMargin;
+      const availHeight = window.innerHeight - headerHeight - footerHeight - verticalMargin;
 
-    addClickAndTouch(backToMenuBtn, () => {
-      showScreen("menu");
-    });
+      if (availWidth <= 0 || availHeight <= 0) return;
 
-    const canvas = document.getElementById("frameCanvas");
-    const ctx = canvas.getContext("2d", { alpha: true });
+      const scale = Math.min(availWidth / BASE_WIDTH, availHeight / BASE_HEIGHT);
+      const displayWidth = BASE_WIDTH * scale;
+      const displayHeight = BASE_HEIGHT * scale;
+
+      frameViewport.style.width = displayWidth + "px";
+      frameViewport.style.height = displayHeight + "px";
+    }
+
+    window.addEventListener("resize", resizeFrame);
 
     // 外枠（シースルー・フレーム）
     function drawRoundedRect(x, y, w, h, r, lineWidth) {
@@ -360,21 +499,146 @@ Koma*Weave v0.2b 変更点：
       }
     }
 
-    function renderFrame() {
+    function renderFrameOnly() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawEffectLines();    // [次層] 効果線
-      placeSpeechBubble();  // [次層] 吹き出し
-      drawOuterFrame();     // [最上層] コマ枠
+      drawEffectLines();
+      placeSpeechBubble();
+      drawOuterFrame();
     }
 
-    renderFrame();
+    function capturePhotoWithFrame() {
+      if (!cameraVideo) return;
+      const videoWidth = cameraVideo.videoWidth;
+      const videoHeight = cameraVideo.videoHeight;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (videoWidth && videoHeight) {
+        const scale = Math.max(
+          BASE_WIDTH / videoWidth,
+          BASE_HEIGHT / videoHeight
+        );
+        const drawW = videoWidth * scale;
+        const drawH = videoHeight * scale;
+        const offsetX = (BASE_WIDTH - drawW) / 2;
+        const offsetY = (BASE_HEIGHT - drawH) / 2;
+        ctx.drawImage(cameraVideo, offsetX, offsetY, drawW, drawH);
+      }
+
+      drawEffectLines();
+      placeSpeechBubble();
+      drawOuterFrame();
+
+      const dataURL = canvas.toDataURL("image/png");
+      komaStore.push(dataURL);
+      updateWarehouseGrid();
+    }
+
+    function updateWarehouseGrid() {
+      if (!warehouseGrid) return;
+      warehouseGrid.innerHTML = "";
+      komaStore.forEach((url, index) => {
+        const img = document.createElement("img");
+        img.src = url;
+        img.alt = "koma-" + (index + 1);
+        warehouseGrid.appendChild(img);
+      });
+    }
+
+    async function startCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("この端末ではカメラを利用できません。");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+        cameraStream = stream;
+        cameraVideo.srcObject = stream;
+        cameraVideo.play().catch(() => {});
+      } catch (e) {
+        console.error(e);
+        alert("カメラを起動できませんでした。権限設定を確認してください。");
+      }
+    }
+
+    function stopCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+      }
+      if (cameraVideo) {
+        cameraVideo.srcObject = null;
+      }
+    }
+
+    function enterPreviewMode() {
+      currentMode = "preview";
+      stopCamera();
+      if (cameraVideo) cameraVideo.style.display = "none";
+      if (shutterBtn) shutterBtn.style.display = "none";
+      if (downloadBtn) downloadBtn.style.display = "inline-block";
+      renderFrameOnly();
+      resizeFrame();
+    }
+
+    function enterCameraMode() {
+      currentMode = "camera";
+      if (cameraVideo) cameraVideo.style.display = "block";
+      if (shutterBtn) shutterBtn.style.display = "block";
+      if (downloadBtn) downloadBtn.style.display = "none";
+      renderFrameOnly();
+      startCamera();
+      resizeFrame();
+    }
+
+    // イベント設定
+    addClickAndTouch(btnFrameSelect, () => {
+      enterPreviewMode();
+      showScreen("frame");
+    });
+
+    addClickAndTouch(btnFrameCapture, () => {
+      enterCameraMode();
+      showScreen("frame");
+    });
+
+    addClickAndTouch(btnWarehouse, () => {
+      updateWarehouseGrid();
+      showScreen("warehouse");
+    });
+
+    addClickAndTouch(backToMenuBtn, () => {
+      stopCamera();
+      currentMode = "preview";
+      showScreen("menu");
+    });
+
+    addClickAndTouch(backToMenuFromWarehouseBtn, () => {
+      showScreen("menu");
+    });
 
     addClickAndTouch(downloadBtn, () => {
+      if (currentMode !== "preview") {
+        renderFrameOnly();
+      }
       const link = document.createElement("a");
-      link.download = "komaweave_v0_2c_sheerscreen_1080x1920.png";
+      link.download = "komaweave_v0_2d_sheerscreen_1080x1920.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
     });
+
+    addClickAndTouch(shutterBtn, () => {
+      if (currentMode === "camera") {
+        capturePhotoWithFrame();
+      }
+    });
+
+    // 初期表示用
+    renderFrameOnly();
+    resizeFrame();
   </script>
 </body>
 </html>
