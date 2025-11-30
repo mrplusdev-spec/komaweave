@@ -1,4 +1,10 @@
 <!--
+Koma*Weave v0.2e 変更点：
+- iPhoneブラウザ下部メニューに隠れないよう、フレーム表示高さの安全マージンを追加
+- シャッターボタン押下時にWeb Audio APIによる短いシャッター音を再生
+- ダウンロードファイル名および画面上のバージョン表記を v0.2e に更新
+-->
+<!--
 Koma*Weave v0.2d 変更点：
 - スマホ画面内にフレーム全体が収まるよう、ウィンドウサイズからキャンバス表示サイズを動的スケーリング
 - 「フレーム選択」（プレビュー）と「フレーム撮影」（カメラ＋シャッター）の2モードを実装
@@ -25,7 +31,7 @@ Koma*Weave v0.2b 変更点：
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>Koma*Weave v0.2d｜メニュー＋フレーム＋コマ倉庫</title>
+  <title>Koma*Weave v0.2e｜メニュー＋フレーム＋コマ倉庫</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <style>
     * {
@@ -265,7 +271,7 @@ Koma*Weave v0.2b 変更点：
     <!-- メニュー画面 -->
     <div id="menuScreen" class="screen active">
       <div id="menuInner">
-        <div id="menuTitle">Koma*Weave v0.2d</div>
+        <div id="menuTitle">Koma*Weave v0.2e</div>
         <button id="btnFrameSelect" class="menu-button">フレーム選択</button>
         <button id="btnFrameCapture" class="menu-button">フレーム撮影</button>
         <button id="btnWarehouse" class="menu-button">コマ倉庫</button>
@@ -334,6 +340,8 @@ Koma*Weave v0.2b 変更点：
     let cameraStream = null;
     const komaStore = [];
 
+    let audioCtx = null;
+
     function showScreen(name) {
       const screens = document.querySelectorAll(".screen");
       screens.forEach(scr => scr.classList.remove("active"));
@@ -359,9 +367,15 @@ Koma*Weave v0.2b 変更点：
       const footerHeight = frameFooter ? frameFooter.getBoundingClientRect().height : 0;
       const verticalMargin = 20;
       const horizontalMargin = 16;
+      const safeBottom = 72; // 端末下メニューぶんの余白
 
       const availWidth = window.innerWidth - horizontalMargin;
-      const availHeight = window.innerHeight - headerHeight - footerHeight - verticalMargin;
+      const availHeight =
+        window.innerHeight -
+        headerHeight -
+        footerHeight -
+        verticalMargin -
+        safeBottom;
 
       if (availWidth <= 0 || availHeight <= 0) return;
 
@@ -594,6 +608,38 @@ Koma*Weave v0.2b 変更点：
       resizeFrame();
     }
 
+    function playShutterSound() {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+
+        if (!audioCtx) {
+          audioCtx = new AudioCtx();
+        }
+        if (audioCtx.state === "suspended") {
+          audioCtx.resume();
+        }
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = "triangle";
+        osc.frequency.value = 600;
+
+        const now = audioCtx.currentTime;
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.1);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     // イベント設定
     addClickAndTouch(btnFrameSelect, () => {
       enterPreviewMode();
@@ -625,13 +671,14 @@ Koma*Weave v0.2b 変更点：
         renderFrameOnly();
       }
       const link = document.createElement("a");
-      link.download = "komaweave_v0_2d_sheerscreen_1080x1920.png";
+      link.download = "komaweave_v0_2e_sheerscreen_1080x1920.png";
       link.href = canvas.toDataURL("image/png");
       link.click();
     });
 
     addClickAndTouch(shutterBtn, () => {
       if (currentMode === "camera") {
+        playShutterSound();
         capturePhotoWithFrame();
       }
     });
